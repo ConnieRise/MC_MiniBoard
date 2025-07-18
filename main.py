@@ -201,33 +201,35 @@ def reboot_system():
 async def actions(uart, websocket):
     print("Started actions")
     load_config()
-    # Check if Wi-Fi is already connected
+
     if not is_wifi_connected():
         print("Wi-Fi not connected. Attempting to connect...")
         connect_wifi()
     else:
         wlan = network.WLAN(network.STA_IF)
         print(f"Wi-Fi already connected: {wlan.ifconfig()}")
+
     uri = f"{config['server']['url']}/{config['chair']['id']}"
     reconnect_interval = config.get('server', {}).get('reconnect_interval', 5)
     receive_timeout = config.get('server', {}).get('receive_timeout', 5)
+
     while True:
-        #websocket = None
         try:
             print(f"Connecting to {uri}...")
-            #websocket = AsyncWebsocketClient()
             connected = await websocket.handshake(uri)
             if websocket and await websocket.open():
                 print("Connected to WebSocket")
-                # Start the ping task
+
                 while True:
                     try:
                         message = await recv_message(websocket, receive_timeout)
                         if not message.strip():
                             print("Received an empty message, reconnecting...")
-                            break  # Break inner loop to reconnect
+                            break
+
                         print(f"Received: {message}")
                         data = json.loads(message)
+
                         if data['type'] == 'control':
                             if "minutes" in data:
                                 minutes = data["minutes"]
@@ -238,66 +240,72 @@ async def actions(uart, websocket):
                                 config_data["state"]["stopTime"] = stop_time
                                 with open(CONFIG_FILE, "w") as file:
                                     json.dump(config_data, file)
-                            print(f"Saved stopTime to config.json: {stop_time}")
+                                print(f"Saved stopTime to config.json: {stop_time}")
+
                             command = data['command']
-                            action = command['action']
+                            action = command.get('action')
                             value = command.get('value')
+                            should_send_result = True
+                            response = ""
+
                             if action == 'remote':
                                 code = value
                                 response = send_command(uart, code)
+
                             elif action == 'get_config':
                                 try:
-                                    await websocket.send('here1')
                                     with open(CONFIG_FILE, "r") as f:
                                         current_config = json.load(f)
-                                    await websocket.send('here2')
                                     response = {
                                         "type": "config_data",
                                         "chair_id": config['chair']['id'],
                                         "data": current_config
                                     }
-                                    await websocket.send('here3')
                                 except Exception as e:
                                     response = {
                                         "type": "config_data",
                                         "chair_id": config['chair']['id'],
                                         "error": f"Failed to read config: {str(e)}"
                                     }
-                            
+
                                 await websocket.send(json.dumps(response))
-                                continue
+                                should_send_result = False  # skip command_result
+
                             elif action == 'update_config':
                                 save_config((value['key'], value['value']), update_type='partial')
                                 response = f"Configuration key '{value['key']}' updated successfully"
+
                             elif action == 'reboot':
                                 response = reboot_system()
+
                             else:
                                 response = "Invalid command"
-                            
-                            await websocket.send(json.dumps({
-                                "type": "command_result",
-                                "chair_id": config['chair']['id'],
-                                "result": response
-                            }))
-                            
+
+                            if should_send_result:
+                                await websocket.send(json.dumps({
+                                    "type": "command_result",
+                                    "chair_id": config['chair']['id'],
+                                    "result": response
+                                }))
+
                             if action == 'reboot':
-                                # Close the websocket connection before reboot
                                 await websocket.close()
                                 return
+
                     except asyncio.TimeoutError:
                         print(f"No message received for {receive_timeout} seconds, reconnecting...")
-                        break  # Changed from return to break
+                        break
                     except Exception as e:
                         print(f"Error processing message: {e}")
-                        break  # Changed from return to break
+                        break
+
         except Exception as e:
             print(f"Failed to connect: {e}")
-            # Removed return statement
         finally:
             if websocket:
                 await websocket.close()
                 print("WebSocket connection closed")
-        
+
         print(f"Reconnecting to WebSocket in {reconnect_interval} seconds...")
         await asyncio.sleep(reconnect_interval)
 
