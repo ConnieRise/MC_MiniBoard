@@ -246,14 +246,16 @@ async def actions(uart):
         print(f"Reconnecting to WebSocket in {reconnect_interval} seconds...")
         await asyncio.sleep(reconnect_interval)
 
-async def receive_status(websocket, uart):
+async def receive_status(uart):
     FRAME_SIZE = 26
     log_message("Starting UART handler")
 
     while True:
         try:
-            if not websocket or not await websocket.open():
-                log_message("WebSocket is closed in handle_uart")
+            websocket = AsyncWebsocketClient()
+            connected = await websocket.handshake(f"{config['server']['url']}/{config['chair']['id']}")
+            if not connected:
+                log_message("WebSocket is closed in receive_status")
                 return
 
             if uart.any() >= FRAME_SIZE:
@@ -267,7 +269,7 @@ async def receive_status(websocket, uart):
             log_message(f"UART handling error: {e}")
             return
 
-        await asyncio.sleep(0.1)  # Check every 100ms
+        await asyncio.sleep(0.1)
 
         
 def initialize_uart():
