@@ -59,6 +59,36 @@ def connect_wifi():
 
     print("Failed to connect to Wi-Fi after multiple attempts.")
     raise OSError("Wi-Fi Internal Error")
+    
+def save_config(key_value_tuple, update_type="partial"):
+    """
+    Update the config.json file with the new key-value pair.
+    key_value_tuple: tuple of ("key.path.in.config", new_value)
+    update_type: "partial" to only update that key, "full" to overwrite the whole config
+    """
+    try:
+        key_path, new_value = key_value_tuple
+        keys = key_path.split(".")
+
+        with open(CONFIG_FILE, "r") as f:
+            current_config = json.load(f)
+
+        if update_type == "partial":
+            d = current_config
+            for k in keys[:-1]:
+                d = d.setdefault(k, {})
+            d[keys[-1]] = new_value
+        else:
+            current_config = new_value  # overwrite everything
+
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(current_config, f)
+
+        print(f"Config updated: {key_path} = {new_value}")
+        return True
+    except Exception as e:
+        print(f"Failed to update config: {e}")
+        return False
 
 def parse_iso_time(iso_time):
     try:
@@ -216,7 +246,7 @@ async def actions(uart, websocket):
                                 code = value
                                 response = send_command(uart, code)
                             elif action == 'update_config':
-                                #save_config((value['key'], value['value']), update_type='partial')
+                                save_config((value['key'], value['value']), update_type='partial')
                                 response = f"Configuration key '{value['key']}' updated successfully"
                             elif action == 'reboot':
                                 response = reboot_system()
