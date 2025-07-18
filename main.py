@@ -8,6 +8,7 @@ import os
 import ntptime
 import sys
 from uwebsockets.client import connect
+import machine
 
 if "update_done.txt" in os.listdir():
     os.remove("update_done.txt")
@@ -200,7 +201,8 @@ def send_command(uart,message):
         return "Serial communication error"
 
 def reboot_system():
-    print("Rebooting the system...")
+    print("Rebooting ESP32...")
+    machine.reset()
 
 async def actions(uart, websocket):
     print("Started actions")
