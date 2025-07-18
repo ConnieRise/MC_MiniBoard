@@ -15,6 +15,10 @@ CONFIG_FILE = "./config.json"
 # Global configuration variables
 config = {}
 
+def log_message(msg):
+    print(msg)
+
+
 def load_config():
     global config
     try:
@@ -164,7 +168,7 @@ def send_command(uart,message):
 def reboot_system():
     print("Rebooting the system...")
 
-async def actions(uart):
+async def actions(uart, websocket):
     print("Started actions")
     load_config()
     # Check if Wi-Fi is already connected
@@ -178,10 +182,10 @@ async def actions(uart):
     reconnect_interval = config.get('server', {}).get('reconnect_interval', 5)
     receive_timeout = config.get('server', {}).get('receive_timeout', 5)
     while True:
-        websocket = None
+        #websocket = None
         try:
             print(f"Connecting to {uri}...")
-            websocket = AsyncWebsocketClient()
+            #websocket = AsyncWebsocketClient()
             connected = await websocket.handshake(uri)
             if websocket and await websocket.open():
                 print("Connected to WebSocket")
@@ -246,56 +250,46 @@ async def actions(uart):
         print(f"Reconnecting to WebSocket in {reconnect_interval} seconds...")
         await asyncio.sleep(reconnect_interval)
 
-async def receive_status(uart):
+async def receive_status(uart, websocket):
     FRAME_SIZE = 26
     log_message("Starting UART status receiver")
 
-    try:
-        websocket = AsyncWebsocketClient()
-        ws_url = f"{config['server']['url']}/{config['chair']['id']}"
-        connected = await websocket.handshake(ws_url)
+    if not await websocket.open():
+        log_message("WebSocket is closed in receive_status")
+        return
 
-        if not connected or not await websocket.open():
-            log_message("WebSocket is closed in receive_status")
-            return
+    log_message("WebSocket connected in receive_status")
 
-        log_message("WebSocket connected in receive_status")
-        
-        while True:
-            try:
-                if uart.any() >= FRAME_SIZE:
-                    raw = uart.read()
-                    if not raw:
-                        await asyncio.sleep(0.1)
-                        continue
+    last_sent_time = time.time()
 
-                    # Process all 26-byte chunks
-                    for i in range(0, len(raw) - FRAME_SIZE + 1, FRAME_SIZE):
-                        frame = raw[i:i + FRAME_SIZE]
-                        if frame[0] == 0x55 and frame[1] == 0xAA:
-                            log_message(f"Valid UART frame: {frame}")
+    while True:
+        try:
+            if uart.any() >= FRAME_SIZE:
+                raw = uart.read()
+                if not raw:
+                    await asyncio.sleep(0.1)
+                    continue
+
+                for i in range(0, len(raw) - FRAME_SIZE + 1, FRAME_SIZE):
+                    frame = raw[i:i + FRAME_SIZE]
+                    if frame[0] == 0x55 and frame[1] == 0xAA:
+                        now = time.time()
+                        if now - last_sent_time >= 10:
                             hb = {
                                 "type": "HB",
                                 "value": frame.hex()
                             }
                             await websocket.send(json.dumps(hb))
                             log_message(f"Sent to WebSocket: {hb}")
+                            last_sent_time = now
                         else:
-                            log_message(f"Ignored invalid frame: {frame}")
-            except Exception as e_inner:
-                log_message(f"UART receive loop error: {e_inner}")
-                break
+                            log_message("Skipping HB due to rate limit")
+        except Exception as e_inner:
+            log_message(f"UART receive loop error: {e_inner}")
+            return
 
-            await asyncio.sleep(10)
+        await asyncio.sleep(0.1)
 
-    except Exception as e:
-        log_message(f"UART WebSocket connection error: {e}")
-    finally:
-        try:
-            await websocket.close()
-            log_message("WebSocket closed in receive_status")
-        except:
-            pass
 
 
         
@@ -312,31 +306,44 @@ async def run_tasks():
             load_config()
             connect_wifi()
             uart = initialize_uart()
-            retries = 5
-            
-            tasks = await asyncio.gather(
-                track(uart),
-                actions(uart),
-                receive_status(uart),
-                return_exceptions=True  # Add this to handle exceptions
-            )
-            
-            # If any task completed (which means it failed), raise an exception
-            # to restart all tasks
-            if any(isinstance(t, Exception) for t in tasks):
-                print("Task failed, restarting all tasks...")
+
+            websocket = AsyncWebsocketClient()
+            uri = f"{config['server']['url']}/{config['chair']['id']}"
+            print(uri)
+            connected = await websocket.handshake(uri)
+
+            if not connected or not await websocket.open():
+                print("Failed to connect WebSocket in run_tasks")
+                await asyncio.sleep(5)
                 continue
+
+            print("Shared WebSocket connected")
+
+            # Run all tasks and restart if any of them crash
+            task1 = asyncio.create_task(track(uart))
+            task2 = asyncio.create_task(actions(uart, websocket))
+            task3 = asyncio.create_task(receive_status(uart, websocket))
+
+            while True:
+                await asyncio.sleep(1)
+                for t in [task1, task2, task3]:
+                    if t.done():
+                        raise Exception("A task exited unexpectedly")
 
         except Exception as e:
             print(f"Exception occurred: {e}")
-            print("Restarting tasks...")
-            # Optional delay before restarting to prevent rapid restarts
-            await asyncio.sleep(1)
+
+        print("Sleeping before restart...")
+        await asyncio.sleep(3)
+
+
+
 
 # Start the event loop
 try:
     asyncio.run(run_tasks())
 except KeyboardInterrupt:
     print("Program stopped.")
+
 
 
