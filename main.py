@@ -253,22 +253,28 @@ async def actions(uart, websocket):
                                 response = send_command(uart, code)
 
                             elif action == 'get_config':
-                                try:
-                                    with open(CONFIG_FILE, "r") as f:
-                                        current_config = json.load(f)
-                                    response = {
-                                        "type": "config_data",
-                                        "chair_id": config['chair']['id'],
-                                        "data": current_config
-                                    }
-                                except Exception as e:
-                                    response = {
-                                        "type": "config_data",
-                                        "chair_id": config['chair']['id'],
-                                        "error": f"Failed to read config: {str(e)}"
-                                    }
+                                # try:
+                                #     with open(CONFIG_FILE, "r") as f:
+                                #         current_config = json.load(f)
+                                #     response = {
+                                #         "type": "config_data",
+                                #         "chair_id": config['chair']['id'],
+                                #         "data": current_config
+                                #     }
+                                # except Exception as e:
+                                #     response = {
+                                #         "type": "config_data",
+                                #         "chair_id": config['chair']['id'],
+                                #         "error": f"Failed to read config: {str(e)}"
+                                #     }
 
-                                await websocket.send(json.dumps(response))
+                                test_data = {
+                                    "type": "config_data",
+                                    "msg": "hello from device"
+                                }
+                                await websocket.send(json.dumps(test_data))
+
+                                # await websocket.send(json.dumps(response))
                                 should_send_result = False  # skip command_result
 
                             elif action == 'update_config':
