@@ -9,8 +9,10 @@ import ntptime
 import sys
 from uwebsockets.client import connect
 
-os.remove("update_done.txt")
-
+if "update_done.txt" in os.listdir():
+    os.remove("update_done.txt")
+    print("update_done.txt removed for next update")
+    
 # Configuration file path
 CONFIG_FILE = "./config.json"
 
