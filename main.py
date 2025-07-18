@@ -394,7 +394,9 @@ async def run_tasks():
                 for t in [task1, task2, task3]:
                     if t.done():
                         raise Exception("A task exited unexpectedly")
-
+        except KeyboardInterrupt:
+            print("Stopping due to user interrupt")
+            raise  # propagate to top-level
         except Exception as e:
             print(f"Exception occurred: {e}")
 
