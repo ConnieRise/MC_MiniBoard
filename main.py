@@ -248,28 +248,55 @@ async def actions(uart):
 
 async def receive_status(uart):
     FRAME_SIZE = 26
-    log_message("Starting UART handler")
+    log_message("Starting UART status receiver")
 
-    while True:
-        try:
-            websocket = AsyncWebsocketClient()
-            connected = await websocket.handshake(f"{config['server']['url']}/{config['chair']['id']}")
-            if not connected:
-                log_message("WebSocket is closed in receive_status")
-                return
+    try:
+        websocket = AsyncWebsocketClient()
+        ws_url = f"{config['server']['url']}/{config['chair']['id']}"
+        connected = await websocket.handshake(ws_url)
 
-            if uart.any() >= FRAME_SIZE:
-                data = uart.read(FRAME_SIZE)
-                if data and len(data) == FRAME_SIZE and data[0] == 0x55 and data[1] == 0xAA:
-                    log_message(f"Valid UART frame: {data}")
-                    hb = {"type": "HB", "value": data.hex()}
-                    await websocket.send(json.dumps(hb))
-                    log_message(f"Sent to WebSocket: {hb}")
-        except Exception as e:
-            log_message(f"UART handling error: {e}")
+        if not connected or not await websocket.open():
+            log_message("WebSocket is closed in receive_status")
             return
 
-        await asyncio.sleep(0.1)
+        log_message("WebSocket connected in receive_status")
+        
+        while True:
+            try:
+                if uart.any() >= FRAME_SIZE:
+                    raw = uart.read()
+                    if not raw:
+                        await asyncio.sleep(0.1)
+                        continue
+
+                    # Process all 26-byte chunks
+                    for i in range(0, len(raw) - FRAME_SIZE + 1, FRAME_SIZE):
+                        frame = raw[i:i + FRAME_SIZE]
+                        if frame[0] == 0x55 and frame[1] == 0xAA:
+                            log_message(f"Valid UART frame: {frame}")
+                            hb = {
+                                "type": "HB",
+                                "value": frame.hex()
+                            }
+                            await websocket.send(json.dumps(hb))
+                            log_message(f"Sent to WebSocket: {hb}")
+                        else:
+                            log_message(f"Ignored invalid frame: {frame}")
+            except Exception as e_inner:
+                log_message(f"UART receive loop error: {e_inner}")
+                break
+
+            await asyncio.sleep(10)
+
+    except Exception as e:
+        log_message(f"UART WebSocket connection error: {e}")
+    finally:
+        try:
+            await websocket.close()
+            log_message("WebSocket closed in receive_status")
+        except:
+            pass
+
 
         
 def initialize_uart():
@@ -311,4 +338,5 @@ try:
     asyncio.run(run_tasks())
 except KeyboardInterrupt:
     print("Program stopped.")
+
 
