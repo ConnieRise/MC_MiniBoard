@@ -9,6 +9,8 @@ import ntptime
 import sys
 from uwebsockets.client import connect
 
+os.remove("update_done.txt")
+
 # Configuration file path
 CONFIG_FILE = "./config.json"
 
