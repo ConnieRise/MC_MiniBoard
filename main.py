@@ -246,7 +246,7 @@ async def actions(uart):
         print(f"Reconnecting to WebSocket in {reconnect_interval} seconds...")
         await asyncio.sleep(reconnect_interval)
 
-async def handle_uart(websocket, uart):
+async def receive_status(websocket, uart):
     FRAME_SIZE = 26
     log_message("Starting UART handler")
 
