@@ -245,6 +245,24 @@ async def actions(uart, websocket):
                             if action == 'remote':
                                 code = value
                                 response = send_command(uart, code)
+                            elif action == 'get_config':
+                                try:
+                                    with open(CONFIG_FILE, "r") as f:
+                                        current_config = json.load(f)
+                                    response = {
+                                        "type": "config_data",
+                                        "chair_id": config['chair']['id'],
+                                        "data": current_config
+                                    }
+                                except Exception as e:
+                                    response = {
+                                        "type": "config_data",
+                                        "chair_id": config['chair']['id'],
+                                        "error": f"Failed to read config: {str(e)}"
+                                    }
+                            
+                                await websocket.send(json.dumps(response))
+                                continue
                             elif action == 'update_config':
                                 save_config((value['key'], value['value']), update_type='partial')
                                 response = f"Configuration key '{value['key']}' updated successfully"
