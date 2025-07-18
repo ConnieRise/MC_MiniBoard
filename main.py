@@ -247,13 +247,16 @@ async def actions(uart, websocket):
                                 response = send_command(uart, code)
                             elif action == 'get_config':
                                 try:
+                                    await websocket.send('here1')
                                     with open(CONFIG_FILE, "r") as f:
                                         current_config = json.load(f)
+                                    await websocket.send('here2')
                                     response = {
                                         "type": "config_data",
                                         "chair_id": config['chair']['id'],
                                         "data": current_config
                                     }
+                                    await websocket.send('here3')
                                 except Exception as e:
                                     response = {
                                         "type": "config_data",
